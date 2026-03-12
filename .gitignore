@@ -1,0 +1,11 @@
+
+venv/
+.venv/
+venv_vision/
+__pycache__/
+*.pyc
+*.zip
+
+lab4/vision/
+
+lab4/api/weights/*.pt
