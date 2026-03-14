@@ -1,0 +1,15 @@
+Hyperparameters - Pneumonia Detection (Inception V3)
+=====================================================
+
+Several configurations were tested (results deleted with the previous token).
+
+Best configuration (AUC score = 0.982558):
+------------------------------------------
+- Model        : Inception (pretrained ImageNet)
+- Learning rate : 1e-04
+- Epochs        : 30
+- Batch size    : 16
+- Dropout       : 0.3
+- Image size    : 256x256
+
+
