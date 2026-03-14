@@ -129,10 +129,12 @@ def get_transforms(image_size: int, augment: bool = False):
 
     if augment:
         return transforms.Compose([
-            transforms.Resize((image_size, image_size)),
+            transforms.Resize((image_size + 32, image_size + 32)),
+            transforms.RandomCrop(image_size),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(10),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.RandomRotation(15),
+            transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
             transforms.ToTensor(),
             normalize,
         ])
@@ -233,10 +235,17 @@ def train(req: TrainRequest):
     train_loader, val_loader = get_dataloaders(req.image_size, req.batch_size)
 
     model     = MODEL_REGISTRY[req.model_name](in_channels=3, dropout_rate=req.dropout_rate).to(DEVICE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=req.learning_rate)
-    criterion = nn.BCEWithLogitsLoss()
+    # Only optimize parameters that require gradients (for transfer learning)
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=req.learning_rate)
 
-    # Optional: add a learning rate scheduler here
+    # Weighted loss to handle class imbalance (NORMAL=0 ~1341, PNEUMONIA=1 ~3970)
+    n_normal = len([p for p in (TRAIN_DIR / "NORMAL").iterdir()])
+    n_pneumonia = len([p for p in (TRAIN_DIR / "PNEUMONIA").iterdir()])
+    pos_weight = torch.tensor([n_normal / n_pneumonia]).to(DEVICE)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+
+    # Cosine annealing scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=req.epochs)
 
     train_losses, val_losses   = [], []
     train_accs,   val_accs     = [], []
@@ -258,6 +267,8 @@ def train(req: TrainRequest):
             best_val_auc = vl_auc
             weight_path  = WEIGHTS_DIR / f"{req.model_name.replace(' ', '_')}_best.pt"
             torch.save(model.state_dict(), weight_path)
+
+        scheduler.step()
 
         print(f"Epoch {epoch+1}/{req.epochs} | "
               f"Train loss {tr_loss:.4f} acc {tr_acc:.4f} auc {tr_auc:.4f} | "
